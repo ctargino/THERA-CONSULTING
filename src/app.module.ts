@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { ProductModule } from './modules/product/product.module';
 import { OrderModule } from './modules/order/order.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { HateoasModule } from './common/hateoas.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AuthModule } from './modules/auth/auth.module';
     ProductModule,
     OrderModule,
     AuthModule,
+    HateoasModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

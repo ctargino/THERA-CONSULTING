@@ -1,6 +1,6 @@
 # API de Pedidos e Produtos
 
-Teste técnico para vaga de Desenvolvedor Back-end na **Thera Consulting**. API RESTful para gerenciamento de pedidos e produtos, construída com NestJS, TypeORM e PostgreSQL.
+Teste técnico para vaga de Desenvolvedor Back-end na **Thera Consulting**. API RESTful para gerenciamento de pedidos e produtos, construída com NestJS, TypeORM e PostgreSQL. Implementa **HATEOAS** (Hypermedia as the Engine of Application State) no formato HAL, tornando a API **agentic-ready** — capaz de guiar agentes de IA e LLMs através de ações disponíveis sem documentação externa.
 
 Para decisões técnicas detalhadas, convenções e regras de negócio, consulte [TECHNICAL_DECISIONS.md](./TECHNICAL_DECISIONS.md).
 
@@ -105,6 +105,53 @@ Resposta:
 
 Em caso de falha no banco, `status` será `"error"` e `database.status` será `"unhealthy"`.
 
+## HATEOAS — API Agentic-Ready
+
+Todos os endpoints de negócio (produtos e pedidos) incluem controles hipermedia no formato HAL. Cada resposta contém um objeto `_links` com links de navegação e, no caso de pedidos, links de ação baseados no estado atual.
+
+### Links de Navegação (`self`)
+
+Todo recurso inclui um link `self` apontando para sua URL canônica:
+
+```json
+{
+  "id": 1,
+  "str_name": "Widget",
+  "str_category": "electronics",
+  "_links": {
+    "self": { "href": "/products/1" }
+  }
+}
+```
+
+### Links de Ação Baseados em Estado (Pedidos)
+
+Pedidos expõem links de ação (`complete`, `cancel`) que aparecem ou desaparecem conforme o status:
+
+```json
+{
+  "id": 5,
+  "str_status": "pending",
+  "_links": {
+    "self": { "href": "/orders/5" },
+    "complete": { "href": "/orders/5/status", "title": "Complete this order" },
+    "cancel": { "href": "/orders/5/status", "title": "Cancel this order" }
+  }
+}
+```
+
+| Status      | Links Disponíveis            |
+| ----------- | ---------------------------- |
+| `pending`   | `self`, `complete`, `cancel` |
+| `completed` | `self`, `cancel`             |
+| `cancelled` | `self`                       |
+
+**Por que isso importa**: Links de ação permitem que agentes de IA descubram transições válidas diretamente da resposta, sem hardcoding de URLs ou consulta a documentação externa. Isso torna a API **agentic-ready** — pronta para consumo por LLMs e ferramentas de automação.
+
+### Endpoints Afetados
+
+Todos os endpoints de produtos e pedidos retornam `_links`. Endpoints de autenticação (`/auth/login`) e health (`/health`) permanecem in JSON puro.
+
 ## Autenticação
 
 Todos os endpoints exceto `/auth/login` e `/health` requerem um token JWT Bearer.
@@ -126,8 +173,16 @@ Authorization: Bearer <access_token>
 ```
 src/
 ├── common/
-│   └── decorators/
-│       └── public.decorator.ts
+│   ├── decorators/
+│   │   ├── public.decorator.ts
+│   │   └── hateoas-resource.decorator.ts
+│   ├── interceptors/
+│   │   └── hateoas.interceptor.ts
+│   ├── services/
+│   │   └── link.service.ts
+│   ├── types/
+│   │   └── hal-links.type.ts
+│   └── hateoas.module.ts
 ├── middleware/
 │   └── logging.middleware.ts
 ├── modules/
@@ -143,12 +198,15 @@ src/
 │   │   ├── order.service.ts
 │   │   ├── order-item.entity.ts
 │   │   └── dto/
+│   │       ├── order-response.dto.ts
+│   │       └── order-item-response.dto.ts
 │   └── product/
 │       ├── product.controller.ts
 │       ├── product.entity.ts
 │       ├── product.module.ts
 │       ├── product.service.ts
 │       └── dto/
+│           └── product-response.dto.ts
 ├── app.module.ts
 └── main.ts
 ```

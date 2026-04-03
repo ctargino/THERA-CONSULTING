@@ -25,10 +25,13 @@ src/modules/product/   # CRUD de produtos
 src/modules/order/     # Ciclo de vida de pedidos + gerenciamento de estoque
 src/modules/auth/      # Autenticação JWT
 src/middleware/         # Concerns transversais (logging)
-src/common/decorators/ # Decorators compartilhados (@Public)
+src/common/decorators/ # Decorators compartilhados (@Public, @HateoasResource)
+src/common/interceptors/ # Interceptors globais (HateoasInterceptor)
+src/common/services/   # Serviços compartilhados (LinkService)
+src/common/types/      # Tipos compartilhados (HalLinks)
 ```
 
-**Por quê**: Um módulo por domínio mantém código relacionado junto. O diretório `common/` guarda código compartilhado entre módulos.
+**Por quê**: Um módulo por domínio mantém código relacionado junto. O diretório `common/` guarda código compartilhado entre módulos, incluindo a infraestrutura HATEOAS (decorator, interceptor, serviço de links e tipos).
 
 ## Princípios SOLID
 
@@ -191,6 +194,30 @@ Autenticação usa um único usuário com credenciais definidas em variáveis de
 
 **Por quê**: Métodos HTTP e códigos de status padrão. `PATCH` para atualizações de status porque é uma atualização parcial. `204 No Content` para DELETE porque não há corpo de resposta.
 
+### HATEOAS — API Agentic-Ready (REST Nível 3)
+
+A API implementa HATEOAS no formato HAL, adicionando controles hipermedia a todas as respostas de negócio. Isso eleva a API do Richardson Maturity Model nível 2 para o nível 3, tornando-a **agentic-ready**: agentes de IA e LLMs podem descobrir ações disponíveis diretamente das respostas, sem consultar documentação externa ou hardcodar URLs.
+
+**Arquitetura**: Um `HateoasInterceptor` global (registrado como `APP_INTERCEPTOR`) intercepta todas as respostas. Controller methods opt-in via decorator `@HateoasResource(resourceType)`. Um `LinkService` stateless constrói os links com base no tipo de recurso e estado da entidade.
+
+**Links `self`**: Todo recurso de produto e pedido inclui `_links.self.href` apontando para sua URL canônica (`/products/{id}`, `/orders/{id}`). Endpoints de lista retornam arrays onde cada item tem seu próprio `self`.
+
+**Links de ação baseados em estado (pedidos)**: Respostas de pedidos incluem links de transição (`complete`, `cancel`) que aparecem ou desaparecem conforme o `str_status`:
+
+| Status      | Links                                                                                    |
+| ----------- | ---------------------------------------------------------------------------------------- |
+| `pending`   | `self`, `complete` (title: "Complete this order"), `cancel` (title: "Cancel this order") |
+| `completed` | `self`, `cancel` (title: "Cancel this order")                                            |
+| `cancelled` | `self`                                                                                   |
+
+**Por quê**: Links de ação permitem que um agente receba um pedido e saiba imediatamente quais transições são válidas — sem consultar documentação, sem inferir URLs, sem conhecer a máquina de estados. O `title` em cada link fornece uma label legível por humanos para UIs e logging.
+
+**Prevenção de serialização circular**: O interceptor remove propriedades `order` e `product` de instâncias de `OrderItem` nas respostas (detecção via presença de `int_product_id`), mantendo apenas os IDs FK. Isso previne referências circulares (Order -> items -> OrderItem -> order -> Order) e produz JSON limpo para consumo por agentes.
+
+**DTOs de resposta para Swagger**: `ProductResponseDto`, `OrderResponseDto` e `OrderItemResponseDto` definem o schema de resposta documentado no Swagger. `OrderItemResponseDto` exclui campos de relacionamento (`order`, `product`) e não inclui `_links` (links HATEOAS só são adicionados em produtos e pedidos, não em itens). Os DTOs são registrados via `extraModels()` no `SwaggerModule.createDocument()`.
+
+**Endpoints excluídos**: Autenticação (`/auth/login`) e health (`/health`) permanecem em JSON puro sem `_links`.
+
 ### Formato de Resposta de Erro
 
 ```json
@@ -227,7 +254,7 @@ Services são testados com repositórios mockados usando `@nestjs/testing`. Cada
 
 **Por quê**: Mockar repositórios isola a camada de service, permitindo que os testes foquem na lógica de negócio sem precisar de um banco rodando. Isso torna os testes rápidos e determinísticos.
 
-### 48 Testes em 7 Suites
+### 57 Testes em 9 Suites
 
 - `product.service.spec.ts`: CRUD, validação (preço > 0, estoque >= 0, estoque inteiro para unit/box)
 - `order.service.spec.ts`: Criação, validação de estoque, arredondamento para baixo, transições de status, débito/restauração, rollback em falha
@@ -236,8 +263,15 @@ Services são testados com repositórios mockados usando `@nestjs/testing`. Cada
 - `validation-pipe.spec.ts`: Transform, whitelist, forbidNonWhitelisted
 - `app.module.spec.ts`: Compilação do módulo
 - `app.controller.spec.ts`: Resposta padrão
+- `hateoas-resource.decorator.spec.ts`: Metadados do decorator @HateoasResource
+- `link.service.spec.ts`: Links self, complete, cancel por status de pedido
+- `hateoas.interceptor.spec.ts`: Enriquecimento de entidade/array, pass-through, stripping de relações OrderItem
+- `hateoas.module.spec.ts`: Provider LinkService, APP_INTERCEPTOR
+- `product-response.dto.spec.ts`, `order-response.dto.spec.ts`, `order-item-response.dto.spec.ts`: DTOs de resposta
+- `order.controller.spec.ts`: Decorator @HateoasResource e tipos @ApiResponse nos endpoints
+- `main.spec.ts`: extraModels do Swagger
 
-**Por quê**: O desafio exige "pelo menos 2 testes unitários." Superamos isso significativamente para demonstrar qualidade e cobertura dos testes. Os testes cobrem caminhos felizes, caminhos de erro e casos extremos (arredondamento decimal, estoque concorrente, rollback).
+**Por quê**: O desafio exige "pelo menos 2 testes unitários." Superamos isso significativamente para demonstrar qualidade e cobertura dos testes. Os testes HATEOAS cobrem enriquecimento de resposta, pass-through sem decorator, stripping de relações circulares, e metadados de controller.
 
 ## Segurança
 
@@ -322,6 +356,10 @@ ESLint impõe a remoção de imports não utilizados.
 
 Entidades usam decorators `@ApiProperty` para que o Swagger UI mostre schemas completos de requisição/resposta com todos os campos.
 
+### DTOs de Resposta HATEOAS
+
+DTOs de resposta (`ProductResponseDto`, `OrderResponseDto`, `OrderItemResponseDto`) estendem os campos da entidade com `_links: HalLinks` para documentação Swagger. O interceptor opera em entidades cruas em runtime; os DTOs servem apenas para geração de schema no Swagger via `extraModels()`.
+
 ### Referências Lazy no Swagger
 
 Relacionamentos circulares de entidades (Order <-> OrderItem) usam `type: () => Class` no `@ApiProperty` para evitar erros de dependência circular na geração do schema do Swagger.
@@ -331,3 +369,9 @@ Relacionamentos circulares de entidades (Order <-> OrderItem) usam `type: () => 
 O `ProductModule` exporta `ProductRepository` para que o `OrderModule` possa injetá-lo para buscas de estoque.
 
 **Por quê**: Isso segue o padrão NestJS de exportar providers que outros módulos precisam, em vez de ter módulos acessando diretamente as entidades ou repositórios uns dos outros.
+
+### HateoasModule como Módulo Global
+
+`HateoasModule` é importado diretamente em `AppModule` e registra `HateoasInterceptor` como `APP_INTERCEPTOR`. O `LinkService` é fornecido como provider do módulo.
+
+**Por quê**: Como interceptor global, o HATEOAS é aplicado automaticamente a todas as respostas. Controllers opt-in via `@HateoasResource()`, então endpoints não decorados (auth, health) passam sem alteração. Isso mantém a lógica de negócio nos controllers e a infraestrutura hipermedia separada.

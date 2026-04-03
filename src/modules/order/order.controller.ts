@@ -12,6 +12,8 @@ import { OrderService } from './order.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { Order } from './order.entity';
+import { OrderResponseDto } from './dto/order-response.dto';
+import { HateoasResource } from '../../common/decorators/hateoas-resource.decorator';
 
 @ApiTags('Orders')
 @Controller('orders')
@@ -20,10 +22,11 @@ export class OrderController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new order' })
+  @HateoasResource('order')
   @ApiResponse({
     status: 201,
     description: 'Order created successfully',
-    type: Order,
+    type: OrderResponseDto,
   })
   @ApiResponse({
     status: 400,
@@ -35,10 +38,11 @@ export class OrderController {
 
   @Get()
   @ApiOperation({ summary: 'Get all orders' })
+  @HateoasResource('order')
   @ApiResponse({
     status: 200,
     description: 'List of orders',
-    type: Order,
+    type: OrderResponseDto,
     isArray: true,
   })
   async findAll(): Promise<Order[]> {
@@ -48,7 +52,12 @@ export class OrderController {
   @Get(':id')
   @ApiOperation({ summary: 'Get an order by ID' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Order found', type: Order })
+  @HateoasResource('order')
+  @ApiResponse({
+    status: 200,
+    description: 'Order found',
+    type: OrderResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async findById(@Param('id', ParseIntPipe) id: number): Promise<Order> {
     return this.orderService.findById(id);
@@ -57,10 +66,11 @@ export class OrderController {
   @Patch(':id/status')
   @ApiOperation({ summary: 'Update order status' })
   @ApiParam({ name: 'id', type: Number })
+  @HateoasResource('order')
   @ApiResponse({
     status: 200,
     description: 'Order status updated',
-    type: Order,
+    type: OrderResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid status transition' })
   @ApiResponse({ status: 404, description: 'Order not found' })

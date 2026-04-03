@@ -4,6 +4,9 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { LoggingMiddleware } from './middleware/logging.middleware';
+import { ProductResponseDto } from './modules/product/dto/product-response.dto';
+import { OrderResponseDto } from './modules/order/dto/order-response.dto';
+import { OrderItemResponseDto } from './modules/order/dto/order-item-response.dto';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -29,7 +32,9 @@ async function bootstrap() {
     .addSecurityRequirements('bearer')
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
+  const document = SwaggerModule.createDocument(app, config, {
+    extraModels: [ProductResponseDto, OrderItemResponseDto, OrderResponseDto],
+  });
   SwaggerModule.setup('api-docs', app, document);
 
   await app.listen(process.env.PORT ?? 3000);

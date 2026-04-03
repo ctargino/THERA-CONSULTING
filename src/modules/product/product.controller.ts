@@ -14,6 +14,8 @@ import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { Product } from './product.entity';
+import { ProductResponseDto } from './dto/product-response.dto';
+import { HateoasResource } from '../../common/decorators/hateoas-resource.decorator';
 
 @ApiTags('Products')
 @Controller('products')
@@ -22,10 +24,11 @@ export class ProductController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new product' })
+  @HateoasResource('product')
   @ApiResponse({
     status: 201,
     description: 'Product created successfully',
-    type: Product,
+    type: ProductResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   async create(@Body() dto: CreateProductDto): Promise<Product> {
@@ -34,10 +37,11 @@ export class ProductController {
 
   @Get()
   @ApiOperation({ summary: 'Get all products' })
+  @HateoasResource('product')
   @ApiResponse({
     status: 200,
     description: 'List of products',
-    type: Product,
+    type: ProductResponseDto,
     isArray: true,
   })
   async findAll(): Promise<Product[]> {
@@ -47,7 +51,12 @@ export class ProductController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a product by ID' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Product found', type: Product })
+  @HateoasResource('product')
+  @ApiResponse({
+    status: 200,
+    description: 'Product found',
+    type: ProductResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Product not found' })
   async findById(@Param('id', ParseIntPipe) id: number): Promise<Product> {
     return this.productService.findById(id);
@@ -56,7 +65,12 @@ export class ProductController {
   @Put(':id')
   @ApiOperation({ summary: 'Update a product' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Product updated', type: Product })
+  @HateoasResource('product')
+  @ApiResponse({
+    status: 200,
+    description: 'Product updated',
+    type: ProductResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 404, description: 'Product not found' })
   async update(
