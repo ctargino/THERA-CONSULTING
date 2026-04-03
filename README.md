@@ -81,9 +81,33 @@ Swagger UI disponível em `http://localhost:3000/api-docs` quando o servidor est
 
 Clique no botão **Authorize** e cole seu token JWT (sem o prefixo "Bearer ") para testar os endpoints autenticados.
 
+## Health Check
+
+Endpoint público para verificação de saúde da aplicação e do banco de dados:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Resposta:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-04-03T12:00:00.000Z",
+  "uptime": 123.456,
+  "database": {
+    "status": "healthy",
+    "responseTimeMs": 5
+  }
+}
+```
+
+Em caso de falha no banco, `status` será `"error"` e `database.status` será `"unhealthy"`.
+
 ## Autenticação
 
-Todos os endpoints exceto `/auth/login` requerem um token JWT Bearer.
+Todos os endpoints exceto `/auth/login` e `/health` requerem um token JWT Bearer.
 
 ```bash
 curl -X POST http://localhost:3000/auth/login \

@@ -300,7 +300,7 @@ O CORS permanece permissivo (padrão NestJS) sem configuração explícita.
 
 As credenciais de autenticação (`AUTH_USERNAME`, `AUTH_PASSWORD`) são comparadas diretamente como texto puro via variáveis de ambiente.
 
-**Por quê**: O desafio pede autenticação simples com JWT e um único usuário admin. Credenciais fixas em variáveis de ambiente são aceitáveis nesse contexto. Se o sistema evoluir para multi-usuário, deve-se migrar para bcrypt com hashes de senha armazenados no banco de dados.
+**Por quê**: O desafio pede autenticação simples com JWT e um único usuário admin. Credenciais fixas em variáveis de ambiente são aceitáveis nesse contexto. Com um sistema em produção com multi-usuário, deve-se migrar para bcrypt com hashes de senha armazenados no banco de dados.
 
 ### Swagger Público (Decisão Consciente)
 

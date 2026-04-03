@@ -1,6 +1,7 @@
 process.env.JWT_SECRET = 'test-secret';
 
 import { Test, TestingModule } from '@nestjs/testing';
+import { getDataSourceToken } from '@nestjs/typeorm';
 import { AppModule } from './app.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -13,7 +14,13 @@ describe('AppModule', () => {
   it('should compile the module without TypeORM', async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [
+        AppService,
+        {
+          provide: getDataSourceToken(),
+          useValue: { query: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
     }).compile();
 
     expect(module).toBeDefined();
