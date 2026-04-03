@@ -69,6 +69,12 @@ Para parar e remover volumes:
 docker compose down -v
 ```
 
+## Live Demo
+
+A API está disponível online em: https://thera-consulting-production.up.railway.app/api-docs
+
+> O ambiente será desativado em **08/04/2026**.
+
 ## Documentação da API
 
 Swagger UI disponível em `http://localhost:3000/api-docs` quando o servidor estiver rodando.

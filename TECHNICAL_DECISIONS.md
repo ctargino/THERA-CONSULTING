@@ -92,12 +92,12 @@ O plano original usava `order` como nome da tabela, mas `ORDER` é uma palavra r
 
 Todas as colunas usam um prefixo `tipo_` para clareza:
 
-| Prefixo | Tipo | Exemplo |
-|---------|------|---------|
-| `str_` | varchar/text | `str_name`, `str_category`, `str_status` |
-| `int_` | integer | `int_value_cents`, `int_total_cents`, `int_order_id` |
-| `dec_` | decimal | `dec_stock`, `dec_quantity` |
-| `dt_` | timestamp | `dt_created_at`, `dt_updated_at` |
+| Prefixo | Tipo         | Exemplo                                              |
+| ------- | ------------ | ---------------------------------------------------- |
+| `str_`  | varchar/text | `str_name`, `str_category`, `str_status`             |
+| `int_`  | integer      | `int_value_cents`, `int_total_cents`, `int_order_id` |
+| `dec_`  | decimal      | `dec_stock`, `dec_quantity`                          |
+| `dt_`   | timestamp    | `dt_created_at`, `dt_updated_at`                     |
 
 **Por quê**: Prefixos deixam imediatamente claro que tipo uma coluna armazena sem verificar o schema. Isso é especialmente útil para `dec_stock` vs `int_value_cents` — ambos relacionados a números mas com requisitos de precisão muito diferentes.
 
@@ -151,9 +151,9 @@ Quando um pedido é criado (status `pending`), o estoque é **verificado** mas *
 
 Cálculo do total do item: `Math.floor(preco_unitario_cents * quantidade)`
 
-**Por quê**: Ao multiplicar um preço inteiro por uma quantidade decimal (ex: 800 cents * 1,333 kg), o resultado pode ter centavos fracionários. `Math.floor` sempre arredonda para baixo, dando o benefício ao negócio. Isso é determinístico e fácil de auditar.
+**Por quê**: Ao multiplicar um preço inteiro por uma quantidade decimal (ex: 800 cents \* 1,333 kg), o resultado pode ter centavos fracionários. `Math.floor` sempre arredonda para baixo, dando o benefício ao negócio. Isso é determinístico e fácil de auditar.
 
-Exemplo: 800 * 1,333 = 1066,4 -> 1066 cents (o negócio fica com 0,4 cents).
+Exemplo: 800 \* 1,333 = 1066,4 -> 1066 cents (o negócio fica com 0,4 cents).
 
 ### Lock em Nível de Linha para Débitos de Estoque
 
@@ -238,6 +238,75 @@ Services são testados com repositórios mockados usando `@nestjs/testing`. Cada
 - `app.controller.spec.ts`: Resposta padrão
 
 **Por quê**: O desafio exige "pelo menos 2 testes unitários." Superamos isso significativamente para demonstrar qualidade e cobertura dos testes. Os testes cobrem caminhos felizes, caminhos de erro e casos extremos (arredondamento decimal, estoque concorrente, rollback).
+
+## Segurança
+
+### Helmet (Headers de Segurança)
+
+`helmet` é aplicado globalmente via middleware para adicionar headers de segurança HTTP em todas as respostas: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security`, entre outros.
+
+**Por quê**: Sem helmet, a API não envia headers de proteção contra content-sniffing, clickjacking e outras vulnerabilidades baseadas em headers. Helmet aplica essas proteções com uma única linha de configuração.
+
+### Rate Limiting via Throttler
+
+`@nestjs/throttler` é aplicado globalmente via `APP_GUARD` (`ThrottlerGuard`) com três camadas:
+
+| Camada   | TTL | Limite  | Uso              |
+| -------- | --- | ------- | ---------------- |
+| `short`  | 1s  | 3 req   | Prevenir floods  |
+| `medium` | 10s | 20 req  | Uso normal       |
+| `long`   | 60s | 100 req | Batch operations |
+
+Todos os endpoints são protegidos, incluindo `/auth/login`. Em caso de excesso, a API retorna `429 Too Many Requests`.
+
+**Por quê**: Sem rate limiting, endpoints autenticados e públicos estão vulneráveis a brute-force e denial of service. O ThrottlerGuard global protege automaticamente todos os endpoints, incluindo os novos.
+
+### `synchronize` Condicional por Ambiente
+
+TypeORM usa `synchronize: process.env.NODE_ENV !== 'production'`. Em desenvolvimento (`synchronize: true`), tabelas são criadas automaticamente. Em produção (`NODE_ENV=production`), `synchronize: false` previne alterações acidentais de schema.
+
+**Por quê**: `synchronize: true` em produção pode causar perda irreversível de dados se uma entidade for modificada. Em ambiente de demonstração no Railway, `NODE_ENV` deve ser definido explicitamente. A primeira vez que o ambiente de produção for criado, as tabelas devem ser geradas manualmente (via migration ou `synchronize: true` temporário).
+
+### Validação de Comprimento em DTOs (`@MaxLength`)
+
+Todos os campos string dos DTOs possuem `@MaxLength` alinhado ao limite da coluna no banco:
+
+| DTO              | Campo             | Limite | Coluna DB      |
+| ---------------- | ----------------- | ------ | -------------- |
+| CreateProductDto | `str_name`        | 255    | `varchar(255)` |
+| CreateProductDto | `str_category`    | 100    | `varchar(100)` |
+| CreateProductDto | `str_description` | 5000   | `text`         |
+| UpdateProductDto | `str_name`        | 255    | `varchar(255)` |
+| UpdateProductDto | `str_category`    | 100    | `varchar(100)` |
+| UpdateProductDto | `str_description` | 5000   | `text`         |
+| LoginDto         | `username`        | 255    | Credencial     |
+| LoginDto         | `password`        | 255    | Credencial     |
+
+**Por quê**: Sem `@MaxLength`, strings extremamente longas causam erros de banco de dados que podem vazar informações de schema. Validar no nível da aplicação é mais rápido e retorna erros claros (400) em vez de erros internos (500).
+
+### Limite de Itens por Pedido (`@ArrayMaxSize`)
+
+O array `items` em `CreateOrderDto` possui `@ArrayMaxSize(50)`, limitando cada pedido a no máximo 50 itens.
+
+**Por quê**: Sem limite, um payload com milhares de itens causaria alto carregamento no banco de dados (N+1 saves na transação). 50 itens é generoso para pedidos reais e previne denial of service por payload excessivo.
+
+### CORS Não Configurado (Decisão Consciente)
+
+O CORS permanece permissivo (padrão NestJS) sem configuração explícita.
+
+**Por quê**: CORS permissivo foi mantido para facilitar acesso no ambiente de demonstração do Railway. Em um cenário de produção com frontend específico, `app.enableCors({ origin: ['https://seufrontend.com'] })` deve ser configurado.
+
+### Senha em Texto Puro (Decisão Consciente)
+
+As credenciais de autenticação (`AUTH_USERNAME`, `AUTH_PASSWORD`) são comparadas diretamente como texto puro via variáveis de ambiente.
+
+**Por quê**: O desafio pede autenticação simples com JWT e um único usuário admin. Credenciais fixas em variáveis de ambiente são aceitáveis nesse contexto. Se o sistema evoluir para multi-usuário, deve-se migrar para bcrypt com hashes de senha armazenados no banco de dados.
+
+### Swagger Público (Decisão Consciente)
+
+A documentação Swagger permanece acessível publicamente em `/api-docs` sem autenticação.
+
+**Por quê**: O Swagger público facilita a demonstração e os testes no ambiente do Railway. Em produção, pode ser desabilitado condicionalmente via `if (process.env.NODE_ENV !== 'production')` ao redor da configuração do Swagger no `main.ts`.
 
 ## Convenções
 
